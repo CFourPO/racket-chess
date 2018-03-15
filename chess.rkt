@@ -1,8 +1,8 @@
 #lang racket
   
-(require racket/gui lens 2htdp/universe)
-(struct/lens game [white black turn state] #:transparent)
-(struct/lens piece [type loc moves has-moved?] #:transparent)
+(require racket/gui lens)
+(struct/lens game [pieces turn state] #:transparent)
+(struct/lens piece [type color loc moves has-moved?] #:transparent)
 
 ;; constants
 
@@ -22,19 +22,19 @@
     (define (get-moves type-of-piece)
       (cond [(eq? type-of-piece 'king) (append diagonal-moves straight-moves)]))
 
-    (define white-king (piece 'king '(4 7) (get-moves 'king) #f))
-    (define black-king (piece 'king '(4 0) (get-moves 'king) #f))
+    (define white-king (piece 'king 'white '(4 . 7) (get-moves 'king) #f))
+    (define black-king (piece 'king 'black '(4 . 0) (get-moves 'king) #f))
 
-    (define starting-game (game (list black-king) (list white-king) 'white empty))
+    (define starting-game (game (list black-king white-king) 'white empty))
 
     ;; board render constants
-   
     (define transparent (make-object color% 0 0 0 0))
     (define light-square (make-object color% 200 200 200))
     (define dark-square (make-object color% 50 50 50))
+    (define white-color (make-object color% "white"))
+    (define black-color (make-object color% "black"))
     (define hover-color (make-object color% 150 150 255 0.35))
     (define press-color (make-object color% 150 150 255 0.7))
-    
 
     ;; board render helpers
     (define (scalev v) (* square-size v))
@@ -58,8 +58,21 @@
 
     ;; highlights a square and returns the new bitmap
     (define (highlight-square board-bmdc position color)
-      (draw-square board-bmdc position color)
-      (send board-bmdc get-bitmap))
+      (send board-bmdc set-pen (make-object pen% transparent 0))
+      (draw-square board-bmdc position color))
+
+    (define (write-text dc text position color)
+      (send dc set-text-foreground color)
+      (send dc draw-text text (scalev (car position)) (scalev (cdr position))))
+      
+    (define (draw-pieces pieces board-bdmc)
+      (define (draw-piece p)
+        (write-text
+         board-bdmc
+         (symbol->string (piece-type p))
+         (piece-loc p)
+         (if (eq? 'white (piece-color p)) white-color black-color)))
+      (map draw-piece pieces))
 
     ;; creates a bitmap of an empty board 
     (define (draw-board)
@@ -72,23 +85,38 @@
       (draw-squares 0 (make-object bitmap-dc% (make-object bitmap% board-width board-width))))
 
     (define empty-bm (draw-board))
-    (define current-bm empty-bm)
-
+    
     ;; creates a new bmdc context from the empty board so that we can draw on the board
     (define (get-board-bmdc)
       (define new-bmdc (make-object bitmap-dc% (make-object bitmap% board-width board-width)))
       (send new-bmdc draw-bitmap empty-bm 0 0)
       new-bmdc)
-  
+
+    ;; this is the final rendereded object, it gets update on mouse input, and rendeded by
+    (define current-bm (let ([bmdc (get-board-bmdc)])
+                         (draw-pieces (game-pieces starting-game) bmdc)
+                         (send bmdc get-bitmap)))
+
+    ;; on mouse left-down handler eventually we will do some state logic here
+    (define (press-square bmdc position)
+       (highlight-square bmdc position press-color))
+
+    ;; this currently handles mouse left-up and motion handling, eventually this will be split
+    (define (hover-square bmdc position)
+       (highlight-square bmdc position hover-color))
+      
     (define/public (handle-mouse mouse-event)
       (let* ([event-type (send mouse-event get-event-type)]
              [mouse-x (send mouse-event get-x)]
              [mouse-y (send mouse-event get-y)]
-             [position (xy->position mouse-x mouse-y)])
+             [position (xy->position mouse-x mouse-y)]
+             [bmdc (get-board-bmdc)])
         (cond
-          [(equal? event-type 'leave) (set! current-bm empty-bm)]
-          [(equal? event-type 'left-down) (set! current-bm (highlight-square (get-board-bmdc) position press-color))]
-          [(or (equal? event-type 'motion) (equal? event-type 'left-up)) (set! current-bm (highlight-square (get-board-bmdc) position hover-color))])))
+          ;[(equal? event-type 'leave) (basic-board bmdc)] ;; TODO eventually we will probably need to handle this, right now it's fine
+          [(equal? event-type 'left-down) (press-square bmdc position)]
+          [(or (equal? event-type 'motion) (equal? event-type 'left-up)) (hover-square bmdc position)])
+        (draw-pieces (game-pieces starting-game) bmdc)
+        (set! current-bm (send bmdc get-bitmap))))
 
     ;; the canvas calls this to update it's bitmap
     (define/public (get-bitmap) current-bm)))
