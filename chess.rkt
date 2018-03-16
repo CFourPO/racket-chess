@@ -1,6 +1,6 @@
 #lang racket
   
-(require racket/gui lens)
+(require racket/gui lens "./posn.rkt")
 (struct/lens game [pieces turn state] #:transparent)
 (struct/lens piece [type color loc moves has-moved?] #:transparent)
 
@@ -99,11 +99,11 @@
 
     ;; on mouse left-down handler eventually we will do some state logic here
     (define (press-square bmdc position)
-       (highlight-square bmdc position press-color))
+      (highlight-square bmdc position press-color))
 
     ;; this currently handles mouse left-up and motion handling, eventually this will be split
     (define (hover-square bmdc position)
-       (highlight-square bmdc position hover-color))
+      (highlight-square bmdc position hover-color))
       
     (define/public (handle-mouse mouse-event)
       (let* ([event-type (send mouse-event get-event-type)]
