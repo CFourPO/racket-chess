@@ -14,23 +14,26 @@
   (class object%
     (super-new)
     
-    (define diagonal-moves '((1 1) (1 -1) (-1 1) (-1 -1))) ;; TODO: use Chris's posn library
-    (define straight-moves '((1 0) (0 1) (-1 0) (0 -1)))
-    (define knight-moves '((2 1) (2 -1) (-2 1) (-2 -1) (1 2) (1 -2) (-1 2) (-1 -2)))
+    (define diagonal-moves '((posn 1 1) (posn 1 -1) (posn -1 1) (posn -1 -1)))
+    (define straight-moves '((posn 1 0) (posn 0 1) (posn -1 0) (posn 0 -1)))
+    (define knight-moves  '((posn 2 1) (posn 2 -1) (posn -2 1) (posn -2 -1) (posn 1 2) (posn 1 -2) (posn -1 2) (posn -1 -2)))
   
     ;; sets all POTENTIALLY possible moves for a piece
-    (define (get-moves type-of-piece)
-      (cond [(eq? type-of-piece 'king) (append diagonal-moves straight-moves)]))
+    ;; (define (get-moves type-of-piece location)
+    ;;   (cond [(eq? type-of-piece 'king) (append diagonal-moves straight-moves)]
+    ;;         [(eq? type-of-piece 'rook ())
 
-    (define white-king (piece 'king 'white '(4 . 7) (get-moves 'king) #f))
-    (define black-king (piece 'king 'black '(4 . 0) (get-moves 'king) #f))
+    (define white-king (piece 'king 'white (posn 4 7) empty #f))
+    (define black-king (piece 'king 'black (posn 4 0) empty #f))
+    (define white-rook (piece 'rook 'white (posn 0 7) empty #f))
 
-    (define starting-game (game (list black-king white-king) 'white empty))
+    (define starting-game (game (list black-king white-king white-rook) 'white empty))
+    (define current-game starting-game)
 
     ;; board render constants
     (define transparent (make-object color% 0 0 0 0))
-    (define light-square (make-object color% 200 200 200))
-    (define dark-square (make-object color% 50 50 50))
+    (define light-square (make-object color% 190 190 190))
+    (define dark-square (make-object color% 50 100 50))
     (define white-color (make-object color% "white"))
     (define black-color (make-object color% "black"))
     (define hover-color (make-object color% 150 150 255 0.35))
@@ -40,21 +43,21 @@
     (define (scalev v) (* square-size v))
     (define (get-x position) (modulo position board-size))
     (define (get-y position) (inexact->exact (floor (/ position board-size))))
-    (define (get-xy position) (cons (get-x position) (get-y position)))
+    (define (get-xy position) (posn (get-x position) (get-y position)))
 
     (define (xy->position x y)
-      (cons
+      (posn
        (inexact->exact (floor (/ x square-size)))
        (inexact->exact (floor (/ y square-size)))))
 
     (define (decide-square-color position)
-      (if (equal? (modulo (+ (car position) (cdr position)) 2) 0) light-square dark-square))
+      (if (equal? (modulo (+ (posn-x position) (posn-y position)) 2) 0) light-square dark-square))
 
     ;; draws a square on a dc
     (define (draw-square dc position color)
       (send dc set-pen (make-object pen% transparent 0))
       (send dc set-brush (make-object brush% color 'solid))
-      (send dc draw-rectangle (scalev (car position)) (scalev (cdr position)) square-size square-size))
+      (send dc draw-rectangle (scalev (posn-x position)) (scalev (posn-y position)) square-size square-size))
 
     ;; highlights a square and returns the new bitmap
     (define (highlight-square board-bmdc position color)
@@ -63,7 +66,7 @@
 
     (define (write-text dc text position color)
       (send dc set-text-foreground color)
-      (send dc draw-text text (scalev (car position)) (scalev (cdr position))))
+      (send dc draw-text text (scalev (posn-x position)) (scalev (posn-y position))))
       
     (define (draw-pieces pieces board-bdmc)
       (define (draw-piece p)
@@ -94,7 +97,7 @@
 
     ;; this is the final rendereded object, it gets update on mouse input, and rendeded by
     (define current-bm (let ([bmdc (get-board-bmdc)])
-                         (draw-pieces (game-pieces starting-game) bmdc)
+                         (draw-pieces (game-pieces current-game) bmdc)
                          (send bmdc get-bitmap)))
 
     ;; on mouse left-down handler eventually we will do some state logic here
@@ -115,7 +118,7 @@
           ;[(equal? event-type 'leave) (basic-board bmdc)] ;; TODO eventually we will probably need to handle this, right now it's fine
           [(equal? event-type 'left-down) (press-square bmdc position)]
           [(or (equal? event-type 'motion) (equal? event-type 'left-up)) (hover-square bmdc position)])
-        (draw-pieces (game-pieces starting-game) bmdc)
+        (draw-pieces (game-pieces current-game) bmdc)
         (set! current-bm (send bmdc get-bitmap))))
 
     ;; the canvas calls this to update it's bitmap
