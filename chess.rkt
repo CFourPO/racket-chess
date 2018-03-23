@@ -14,9 +14,9 @@
   (class object%
     (super-new)
     
-    (define diagonal-moves '((posn 1 1) (posn 1 -1) (posn -1 1) (posn -1 -1)))
-    (define straight-moves '((posn 1 0) (posn 0 1) (posn -1 0) (posn 0 -1)))
-    (define knight-moves  '((posn 2 1) (posn 2 -1) (posn -2 1) (posn -2 -1) (posn 1 2) (posn 1 -2) (posn -1 2) (posn -1 -2)))
+    (define diagonal-moves (list (posn 1 1) (posn 1 -1) (posn -1 1) (posn -1 -1)))
+    (define straight-moves (list (posn 1 0) (posn 0 1) (posn -1 0) (posn 0 -1)))
+    (define knight-moves   (list (posn 2 1) (posn 2 -1) (posn -2 1) (posn -2 -1) (posn 1 2) (posn 1 -2) (posn -1 2) (posn -1 -2)))
   
     ;; sets all POTENTIALLY possible moves for a piece
     ;; (define (get-moves type-of-piece location)
@@ -29,6 +29,19 @@
 
     (define starting-game (game (list black-king white-king white-rook) 'white empty))
     (define current-game starting-game)
+
+    ;; get piece at location or return false
+    (define (get-piece position)
+      (findf (λ (p) (posn=? (piece-loc p) position)) (game-pieces current-game)))
+
+    (let (build-moves loc directions repeat) 
+
+    ;; gets all the possible moves for a piece except the ones off the board (still includes moves passing through other pieces etc)
+    (define (get-all-possible-moves p)
+      (let ([type (piece-type p)]
+            [loc (piece-loc p)])
+        (filter (λ (pc) (posn/in-bounds? (piece-loc pc) 0 7 0 7 #true))
+         (cond [(eq? 'king type) (append diagonal-moves straight-moves)]
 
     ;; board render constants
     (define transparent (make-object color% 0 0 0 0))
@@ -104,6 +117,10 @@
     (define (press-square bmdc position)
       (highlight-square bmdc position press-color))
 
+    (define (select-square bmdc position)
+      (let ([piece (get-piece position)])
+        (cond [piece (lens-set game-state-lens current-game (list 'selected piece))])))
+        
     ;; this currently handles mouse left-up and motion handling, eventually this will be split
     (define (hover-square bmdc position)
       (highlight-square bmdc position hover-color))
@@ -116,6 +133,7 @@
              [bmdc (get-board-bmdc)])
         (cond
           ;[(equal? event-type 'leave) (basic-board bmdc)] ;; TODO eventually we will probably need to handle this, right now it's fine
+          [(equal? event-type 'left-up) (select-square bmdc position)]
           [(equal? event-type 'left-down) (press-square bmdc position)]
           [(or (equal? event-type 'motion) (equal? event-type 'left-up)) (hover-square bmdc position)])
         (draw-pieces (game-pieces current-game) bmdc)
