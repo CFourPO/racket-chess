@@ -2,7 +2,11 @@
   
 (require racket/gui lens "./posn.rkt")
 (struct/lens game [pieces turn state] #:transparent)
-(struct/lens piece [type color loc moves has-moved?] #:transparent)
+(struct/lens piece [type color position movement has-moved?] #:transparent)
+(struct/lens movement [directions repeatable] #:transparent)
+
+(define (piece-movement-directions p) (lens-view (lens-compose movement-directions-lens piece-movement-lens) p))
+(define (piece-movement-repeatable p) (lens-view (lens-compose movement-repeatable-lens piece-movement-lens) p))
 
 ;; constants
 
@@ -10,39 +14,77 @@
 (define square-size 60)
 (define board-width (* square-size board-size))
 
-(define board%
+(define chess-game%
   (class object%
     (super-new)
-    
+
+    ;; types of moves
     (define diagonal-moves (list (posn 1 1) (posn 1 -1) (posn -1 1) (posn -1 -1)))
     (define straight-moves (list (posn 1 0) (posn 0 1) (posn -1 0) (posn 0 -1)))
     (define knight-moves   (list (posn 2 1) (posn 2 -1) (posn -2 1) (posn -2 -1) (posn 1 2) (posn 1 -2) (posn -1 2) (posn -1 -2)))
-  
-    ;; sets all POTENTIALLY possible moves for a piece
-    ;; (define (get-moves type-of-piece location)
-    ;;   (cond [(eq? type-of-piece 'king) (append diagonal-moves straight-moves)]
-    ;;         [(eq? type-of-piece 'rook ())
 
-    (define white-king (piece 'king 'white (posn 4 7) empty #f))
-    (define black-king (piece 'king 'black (posn 4 0) empty #f))
-    (define white-rook (piece 'rook 'white (posn 0 7) empty #f))
+    ;; each pieces movement pattern
+    (define rook-movement (movement straight-moves #t))
+    (define king-movement (movement (append straight-moves diagonal-moves) #f))
 
-    (define starting-game (game (list black-king white-king white-rook) 'white empty))
+    ;; starting pieces
+    (define starting-pieces
+      (list 
+       (piece 'king 'white (posn 4 7) king-movement #f)
+       (piece 'king 'black (posn 4 0) king-movement #f)
+       (piece 'rook 'white (posn 0 7) rook-movement #f)))
+
+    ;; starting game
+    (define starting-game (game starting-pieces 'white (list 'waiting)))
+
+    ;; the current game (will be mutated based on user input)
     (define current-game starting-game)
 
     ;; get piece at location or return false
     (define (get-piece position)
-      (findf (λ (p) (posn=? (piece-loc p) position)) (game-pieces current-game)))
+      (findf (λ (p) (posn=? (piece-position p) position)) (game-pieces current-game)))
 
-    (let (build-moves loc directions repeat) 
+    ;; returns the color of the piece we collided with or false
+    (define (collision position)
+      (let ([p (get-piece position)])
+        (if p (piece-color p) #false)))
 
+    ;; is the posn on the board?
+    (define (in-bounds? position)
+      (posn/in-bounds? position 0 7 0 7 #true))
+
+    ;; a piece can move to a location if it's in bounds and not occupied by a piece of the same color
+    (define (can-move-here? p position)
+      (and (in-bounds? position) (not (eq? (collision position) (piece-color p)))))
+
+    (define (get-repeat-movement p)
+      (define (repeat-direction position direction)
+        (let ([next-position (posn/plus position direction)])
+          (cond [(not (can-move-here? p next-position)) empty]
+                [(collision next-position) (cons next-position empty)]
+                [else (cons next-position (repeat-direction next-position direction))])))
+      (append-map (λ (d) (repeat-direction (piece-position p) d)) (piece-movement-directions p)))
+    
     ;; gets all the possible moves for a piece except the ones off the board (still includes moves passing through other pieces etc)
     (define (get-all-possible-moves p)
-      (let ([type (piece-type p)]
-            [loc (piece-loc p)])
-        (filter (λ (pc) (posn/in-bounds? (piece-loc pc) 0 7 0 7 #true))
-         (cond [(eq? 'king type) (append diagonal-moves straight-moves)]
+      (cond [(piece-movement-repeatable p) (get-repeat-movement p)] ;; TODO
+            [else (filter (λ (position) (can-move-here? p position)) (posn-list/plus (piece-movement-directions p) (piece-position p)))]))
 
+    (define (select-piece p position bmdc)
+      (lens-set game-state-lens current-game (list 'selected))
+      (println (get-all-possible-moves p)))
+  
+    (define (select-square bmdc position)
+      (let ([p (get-piece position)]
+            [current-state-type (first (game-state current-game))])
+        (cond [(and p (eq? (game-turn current-game) (piece-color p))) (select-piece p position bmdc)]
+              [else #false]))) ;; TODO
+
+
+             
+
+    
+               
     ;; board render constants
     (define transparent (make-object color% 0 0 0 0))
     (define light-square (make-object color% 190 190 190))
@@ -86,7 +128,7 @@
         (write-text
          board-bdmc
          (symbol->string (piece-type p))
-         (piece-loc p)
+         (piece-position p)
          (if (eq? 'white (piece-color p)) white-color black-color)))
       (map draw-piece pieces))
 
@@ -116,10 +158,6 @@
     ;; on mouse left-down handler eventually we will do some state logic here
     (define (press-square bmdc position)
       (highlight-square bmdc position press-color))
-
-    (define (select-square bmdc position)
-      (let ([piece (get-piece position)])
-        (cond [piece (lens-set game-state-lens current-game (list 'selected piece))])))
         
     ;; this currently handles mouse left-up and motion handling, eventually this will be split
     (define (hover-square bmdc position)
@@ -142,7 +180,7 @@
     ;; the canvas calls this to update it's bitmap
     (define/public (get-bitmap) current-bm)))
 
-(define current-board (new board%)) ;; this could be passed in as an init parameter to board-canvas...
+(define current-chess-game (new chess-game%)) ;; this could be passed in as an init parameter to board-canvas...
 
 ;; the canvas with on overridden event function... really these two classes could probably just be combined or organized better
 (define board-canvas%
@@ -150,11 +188,11 @@
     (inherit get-width get-height refresh)
     
     (define/override (on-event event)
-      (if (is-a? event mouse-event%) (send current-board handle-mouse event) (println "not a mouse event"))
+      (if (is-a? event mouse-event%) (send current-chess-game handle-mouse event) (println "not a mouse event"))
       (refresh))
 
     (define/private (my-paint-callback self dc)
-      (let ([bm (send current-board get-bitmap)])
+      (let ([bm (send current-chess-game get-bitmap)])
         (send dc draw-bitmap bm 0 0)
         (send canvas min-width (send bm get-width))
         (send canvas min-height (send bm get-height))))
