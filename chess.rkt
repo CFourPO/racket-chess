@@ -24,15 +24,18 @@
     (define knight-moves   (list (posn 2 1) (posn 2 -1) (posn -2 1) (posn -2 -1) (posn 1 2) (posn 1 -2) (posn -1 2) (posn -1 -2)))
 
     ;; each pieces movement pattern
-    (define rook-movement (movement straight-moves #t))
-    (define king-movement (movement (append straight-moves diagonal-moves) #f))
+    (define rook-movement (movement straight-moves #true))
+    (define king-movement (movement (append straight-moves diagonal-moves) #false))
+    (define knight-movement (movement knight-moves #false))
 
     ;; starting pieces
     (define starting-pieces
-      (list 
-       (piece 'king 'white (posn 4 7) king-movement #f)
-       (piece 'king 'black (posn 4 0) king-movement #f)
-       (piece 'rook 'white (posn 0 7) rook-movement #f)))
+      (list
+       (piece 'knight 'black (posn 3 5) knight-movement #false)
+       (piece 'king 'white (posn 4 7) king-movement #false)
+       (piece 'king 'black (posn 4 0) king-movement #false)
+       (piece 'rook 'black (posn 4 1) rook-movement #false)
+       (piece 'rook 'white (posn 0 6) rook-movement #false)))
 
     ;; starting game
     (define starting-game (game starting-pieces 'white (list 'waiting)))
@@ -40,42 +43,79 @@
     ;; the current game (will be mutated based on user input)
     (define current-game starting-game)
 
+    ;; board helper functions
+    (define (other-color color)
+      (if (eq? 'white color) 'black 'white))
+
+    (define (get-pieces color board)
+      (filter (λ (p) (eq? color (piece-color p))) (game-pieces board)))
+    
     ;; get piece at location or return false
-    (define (get-piece position)
-      (findf (λ (p) (posn=? (piece-position p) position)) (game-pieces current-game)))
+    (define (get-piece position board)
+      (findf (λ (p) (posn=? (piece-position p) position)) (game-pieces board)))
 
     ;; returns the color of the piece we collided with or false
-    (define (collision position)
-      (let ([p (get-piece position)])
+    (define (collision position board)
+      (let ([p (get-piece position board)])
         (if p (piece-color p) #false)))
 
     ;; is the posn on the board?
-    (define (in-bounds? position)
+    (define (in-bounds? position board)
       (posn/in-bounds? position 0 7 0 7 #true))
 
     ;; a piece can move to a location if it's in bounds and not occupied by a piece of the same color
-    (define (can-move-here? p position)
-      (and (in-bounds? position) (not (eq? (collision position) (piece-color p)))))
+    (define (can-move-here? p position board)
+      (and (in-bounds? position board) (not (eq? (collision position board) (piece-color p)))))
 
-    (define (get-repeat-movement p)
+    (define (get-repeat-movement p board)
       (define (repeat-direction position direction)
         (let ([next-position (posn/plus position direction)])
-          (cond [(not (can-move-here? p next-position)) empty]
-                [(collision next-position) (cons next-position empty)]
+          (cond [(not (can-move-here? p next-position board)) empty]
+                [(collision next-position board) (cons next-position empty)]
                 [else (cons next-position (repeat-direction next-position direction))])))
       (append-map (λ (d) (repeat-direction (piece-position p) d)) (piece-movement-directions p)))
+
+    (define (get-non-repeat-movement p board)
+      (filter (λ (position) (can-move-here? p position board)) (posn-list/plus (piece-movement-directions p) (piece-position p))))
+
+    (define (get-king color board)
+      (findf (λ (p) (and (eq? 'king (piece-type p)) (eq? color (piece-color p)))) (game-pieces board)))
+
+    (define (move-piece p position board)
+      (let ([new-pieces
+             (filter-not (λ (p2)
+                           (or
+                            (eq? (piece-position p2) (piece-position p))
+                            (eq? (piece-position p2) position))) (game-pieces board))]
+            [new-piece (lens-set piece-position-lens p position)])
+        (lens-set game-pieces-lens board (append new-pieces (list new-piece)))))
+
+    ;; is the king who's turn it is in check?
+    (define (in-check? board)
+      (let ([king (get-king (game-turn board) board)]
+            [other-pieces (get-pieces (other-color (game-turn board)) board)])
+        (member (piece-position king) (append-map (λ (p) (potential-moves p board)) other-pieces))))
     
-    ;; gets all the possible moves for a piece except the ones off the board (still includes moves passing through other pieces etc)
-    (define (get-all-possible-moves p)
-      (cond [(piece-movement-repeatable p) (get-repeat-movement p)] ;; TODO
-            [else (filter (λ (position) (can-move-here? p position)) (posn-list/plus (piece-movement-directions p) (piece-position p)))]))
+    (define (potential-moves p board)
+      (if (piece-movement-repeatable p)
+          (get-repeat-movement p board)
+          (get-non-repeat-movement p board)))
+      
+    (define (all-possible-moves p board)
+      ;(println (in-check? (move-piece p (first (potential-moves p board)) board)))
+      (filter-not
+       (λ (move)
+         ;(println move)
+         ;(println (in-check? (move-piece p move board)))
+         (in-check? (move-piece p move board)))
+       (potential-moves p board)))
 
     (define (select-piece p position bmdc)
       (lens-set game-state-lens current-game (list 'selected))
-      (println (get-all-possible-moves p)))
+      (println (all-possible-moves p current-game)))
   
     (define (select-square bmdc position)
-      (let ([p (get-piece position)]
+      (let ([p (get-piece position current-game)]
             [current-state-type (first (game-state current-game))])
         (cond [(and p (eq? (game-turn current-game) (piece-color p))) (select-piece p position bmdc)]
               [else #false]))) ;; TODO
