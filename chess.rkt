@@ -54,7 +54,9 @@
        (piece 'king 'white (posn 4 7) king-movement #false)
        (piece 'bishop 'white (posn 5 7) bishop-movement #false)
        (piece 'knight 'white (posn 6 7) knight-movement #false)
-       (piece 'rook 'white (posn 7 7) rook-movement #false)))
+       (piece 'rook 'white (posn 7 7) rook-movement #false)
+       ))
+       
 
     ;; starting game
     (define starting-game (game starting-pieces 'white (state 'waiting empty)))
@@ -105,8 +107,8 @@
       (let ([new-pieces
              (filter-not (λ (p2)
                            (or
-                            (eq? (piece-position p2) (piece-position p))
-                            (eq? (piece-position p2) position))) (game-pieces board))]
+                            (posn=? (piece-position p2) (piece-position p))
+                            (posn=? (piece-position p2) position))) (game-pieces board))]
             [new-piece (lens-set piece-position-lens p position)])
         (lens-set game-pieces-lens board (append new-pieces (list new-piece)))))
 
@@ -145,10 +147,6 @@
                                  (lens-set game-state-lens current-game (state 'waiting empty)))]
                      [else (set! current-game
                                  (lens-set game-state-lens current-game (state 'waiting empty)))])])))
-
-
-             
-
     
                
     ;; board render constants
@@ -159,6 +157,7 @@
     (define black-color (make-object color% "black"))
     (define hover-color (make-object color% 150 150 255 0.35))
     (define press-color (make-object color% 150 150 255 0.7))
+    (define move-color (make-object color% 200 50 50 0.5))
 
     ;; board render helpers
     (define (scalev v) (* square-size v))
@@ -228,6 +227,11 @@
     ;; this currently handles mouse left-up and motion handling, eventually this will be split
     (define (hover-square bmdc position)
       (highlight-square bmdc position hover-color))
+
+    (define (draw-possible-moves bmdc)
+       (let ([state-type (game-state-type current-game)]
+             [state-data (game-state-data current-game)])
+         (cond [(eq? state-type 'selected) (map (λ (position) (highlight-square bmdc position move-color)) (second state-data))])))
       
     (define/public (handle-mouse mouse-event)
       (let* ([event-type (send mouse-event get-event-type)]
@@ -241,6 +245,7 @@
           [(equal? event-type 'left-down) (press-square bmdc position)]
           [(or (equal? event-type 'motion) (equal? event-type 'left-up)) (hover-square bmdc position)])
         (draw-pieces (game-pieces current-game) bmdc)
+        (draw-possible-moves bmdc)
         (set! current-bm (send bmdc get-bitmap))))
 
     ;; the canvas calls this to update it's bitmap
