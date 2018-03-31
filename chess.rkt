@@ -2,14 +2,18 @@
   
 (require racket/gui lens "./posn.rkt")
 (struct/lens game [pieces turn state] #:transparent)
+(struct/lens state [type data] #:transparent)
 (struct/lens piece [type color position movement has-moved?] #:transparent)
 (struct/lens movement [directions repeatable] #:transparent)
 
+;; helper lenses
 (define (piece-movement-directions p) (lens-view (lens-compose movement-directions-lens piece-movement-lens) p))
 (define (piece-movement-repeatable p) (lens-view (lens-compose movement-repeatable-lens piece-movement-lens) p))
 
-;; constants
+(define (game-state-type g) (lens-view (lens-compose state-type-lens game-state-lens) g))
+(define (game-state-data g) (lens-view (lens-compose state-data-lens game-state-lens) g))
 
+;; constants
 (define board-size 8)
 (define square-size 60)
 (define board-width (* square-size board-size))
@@ -27,18 +31,33 @@
     (define rook-movement (movement straight-moves #true))
     (define king-movement (movement (append straight-moves diagonal-moves) #false))
     (define knight-movement (movement knight-moves #false))
+    (define bishop-movement (movement diagonal-moves #true))
+    (define queen-movement (movement (append straight-moves diagonal-moves) #true))
 
     ;; starting pieces
     (define starting-pieces
       (list
-       (piece 'knight 'black (posn 3 5) knight-movement #false)
-       (piece 'king 'white (posn 4 7) king-movement #false)
+       ;; black pieces
+       (piece 'rook 'black (posn 0 0) rook-movement #false)
+       (piece 'knight 'black (posn 1 0) knight-movement #false)
+       (piece 'bishop 'black (posn 2 0) bishop-movement #false)
+       (piece 'queen 'black (posn 3 0) queen-movement #false)
        (piece 'king 'black (posn 4 0) king-movement #false)
-       (piece 'rook 'black (posn 4 1) rook-movement #false)
-       (piece 'rook 'white (posn 0 6) rook-movement #false)))
+       (piece 'bishop 'black (posn 5 0) bishop-movement #false)
+       (piece 'knight 'black (posn 6 0) knight-movement #false)
+       (piece 'rook 'black (posn 7 0) rook-movement #false)
+       ;; white pieces
+       (piece 'rook 'white (posn 0 7) rook-movement #false)
+       (piece 'knight 'white (posn 1 7) knight-movement #false)
+       (piece 'bishop 'white (posn 2 7) bishop-movement #false)
+       (piece 'queen 'white (posn 3 7) queen-movement #false)
+       (piece 'king 'white (posn 4 7) king-movement #false)
+       (piece 'bishop 'white (posn 5 7) bishop-movement #false)
+       (piece 'knight 'white (posn 6 7) knight-movement #false)
+       (piece 'rook 'white (posn 7 7) rook-movement #false)))
 
     ;; starting game
-    (define starting-game (game starting-pieces 'white (list 'waiting)))
+    (define starting-game (game starting-pieces 'white (state 'waiting empty)))
 
     ;; the current game (will be mutated based on user input)
     (define current-game starting-game)
@@ -76,7 +95,8 @@
       (append-map (λ (d) (repeat-direction (piece-position p) d)) (piece-movement-directions p)))
 
     (define (get-non-repeat-movement p board)
-      (filter (λ (position) (can-move-here? p position board)) (posn-list/plus (piece-movement-directions p) (piece-position p))))
+      (filter (λ (position) (can-move-here? p position board))
+              (posn-list/plus (piece-movement-directions p) (piece-position p))))
 
     (define (get-king color board)
       (findf (λ (p) (and (eq? 'king (piece-type p)) (eq? color (piece-color p)))) (game-pieces board)))
@@ -102,23 +122,29 @@
           (get-non-repeat-movement p board)))
       
     (define (all-possible-moves p board)
-      ;(println (in-check? (move-piece p (first (potential-moves p board)) board)))
       (filter-not
        (λ (move)
-         ;(println move)
-         ;(println (in-check? (move-piece p move board)))
          (in-check? (move-piece p move board)))
        (potential-moves p board)))
 
-    (define (select-piece p position bmdc)
-      (lens-set game-state-lens current-game (list 'selected))
-      (println (all-possible-moves p current-game)))
+    (define (select-piece p position)
+      (lens-set game-state-lens current-game (state 'selected (list p (all-possible-moves p current-game)))))
+
+    (define (flip-turn board)
+      (lens-set game-turn-lens board (other-color (game-turn board))))
+       
   
-    (define (select-square bmdc position)
+    (define (select-square position)
       (let ([p (get-piece position current-game)]
-            [current-state-type (first (game-state current-game))])
-        (cond [(and p (eq? (game-turn current-game) (piece-color p))) (select-piece p position bmdc)]
-              [else #false]))) ;; TODO
+            [state-type (game-state-type current-game)]
+            [state-data (game-state-data current-game)])
+        (cond [(and p (eq? (game-turn current-game) (piece-color p))) (set! current-game (select-piece p position))]
+              [(eq? state-type 'selected)
+               (cond [(member position (second state-data)) (set! current-game (move-piece (first state-data) position (flip-turn current-game)))
+                                                            (set! current-game
+                                 (lens-set game-state-lens current-game (state 'waiting empty)))]
+                     [else (set! current-game
+                                 (lens-set game-state-lens current-game (state 'waiting empty)))])])))
 
 
              
@@ -211,7 +237,7 @@
              [bmdc (get-board-bmdc)])
         (cond
           ;[(equal? event-type 'leave) (basic-board bmdc)] ;; TODO eventually we will probably need to handle this, right now it's fine
-          [(equal? event-type 'left-up) (select-square bmdc position)]
+          [(equal? event-type 'left-up) (select-square position)]
           [(equal? event-type 'left-down) (press-square bmdc position)]
           [(or (equal? event-type 'motion) (equal? event-type 'left-up)) (hover-square bmdc position)])
         (draw-pieces (game-pieces current-game) bmdc)
