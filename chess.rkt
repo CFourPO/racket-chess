@@ -28,6 +28,8 @@
     (define knight-moves   (list (posn 2 1) (posn 2 -1) (posn -2 1) (posn -2 -1) (posn 1 2) (posn 1 -2) (posn -1 2) (posn -1 -2)))
 
     ;; each pieces movement pattern
+    (define pawnb-movement (movement (list (posn 0 1)) #false))
+    (define pawnw-movement (movement (list (posn 0 -1)) #false))
     (define rook-movement (movement straight-moves #true))
     (define king-movement (movement (append straight-moves diagonal-moves) #false))
     (define knight-movement (movement knight-moves #false))
@@ -38,6 +40,15 @@
     (define starting-pieces
       (list
        ;; black pieces
+       (piece 'pawn 'black (posn 0 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 1 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 2 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 3 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 4 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 5 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 6 1) pawnb-movement #false)
+       (piece 'pawn 'black (posn 7 1) pawnb-movement #false)
+       
        (piece 'rook 'black (posn 0 0) rook-movement #false)
        (piece 'knight 'black (posn 1 0) knight-movement #false)
        (piece 'bishop 'black (posn 2 0) bishop-movement #false)
@@ -47,6 +58,15 @@
        (piece 'knight 'black (posn 6 0) knight-movement #false)
        (piece 'rook 'black (posn 7 0) rook-movement #false)
        ;; white pieces
+       (piece 'pawn 'white (posn 0 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 1 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 2 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 3 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 4 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 5 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 6 6) pawnw-movement #false)
+       (piece 'pawn 'white (posn 7 6) pawnw-movement #false)
+       
        (piece 'rook 'white (posn 0 7) rook-movement #false)
        (piece 'knight 'white (posn 1 7) knight-movement #false)
        (piece 'bishop 'white (posn 2 7) bishop-movement #false)
